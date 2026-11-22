@@ -687,7 +687,442 @@ O(N²) = "크기가 2배 증가하면, 시간은 4배 증가"
 
 ---
 
-## 8단계: 프로그램의 한계와 개선점
+## 8단계: 모드별 동점 처리 규칙 차이
+
+### **모드 1 vs 모드 2의 동점 처리 정책**
+
+프로그램의 두 모드는 **동점 처리 방식이 다릅니다.**
+
+#### **모드 1 (사용자 입력 - 3×3)**
+```python
+if abs(score_a - score_b) < EPSILON:
+    result = "판정 불가 (동점)"
+elif score_a > score_b:
+    result = "A"
+else:
+    result = "B"
+```
+
+**규칙:**
+- epsilon(1e-9) 이내 차이 → "판정 불가 (동점)" 출력
+- 사용자가 보는 화면에 "판정 불가"라고 명시
+- A와 B 중 선택하지 않음
+
+**예시:**
+```
+필터 A 점수: 1.0
+필터 B 점수: 0.9999999999
+판정: 판정 불가 (동점)
+```
+
+---
+
+#### **모드 2 (JSON 분석 - 모든 크기)**
+```python
+if abs(score_cross - score_x) < EPSILON:
+    decision = 'UNDECIDED'
+elif score_cross > score_x:
+    decision = 'Cross'
+else:
+    decision = 'X'
+
+pass_fail = 'PASS' if decision == expected else 'FAIL'
+```
+
+**규칙:**
+- epsilon(1e-9) 이내 차이 → decision = 'UNDECIDED'
+- expected와 비교해서 PASS/FAIL 판정
+- **동점이면 expected와 다르면 FAIL (엄격함)**
+
+**예시:**
+```
+Cross 점수: 0.9
+X 점수: 0.8999999999
+판정: UNDECIDED
+expected: X
+결과: FAIL (왜냐하면 UNDECIDED ≠ X)
+```
+
+---
+
+### **왜 다르게 했는가?**
+
+| 항목 | 모드 1 | 모드 2 |
+|------|--------|--------|
+| 목적 | 실시간 판정 | 테스트 검증 |
+| 사용자 | 일반 사용자 | 테스트 엔지니어 |
+| 요구사항 | 명확한 결과 | 정확한 검증 |
+| 동점 처리 | "판정 불가" 보고 | FAIL 처리 |
+
+**모드 1:** 사용자가 직접 입력하므로 "판정 못 함"을 솔직하게 알림  
+**모드 2:** 자동 테스트이므로 expected와 정확히 일치해야 PASS
+
+---
+
+## 9단계: 새 라벨 추가 절차 (확장 방법)
+
+현재 프로그램은 `'Cross'`와 `'X'` 두 가지 라벨만 지원합니다.  
+**새로운 라벨을 추가하려면 어떻게 할까요?**
+
+예: `'Circle'`(원형) 라벨 추가하기
+
+### **단계 1: normalize_label 함수 수정**
+
+**현재 코드:**
+```python
+def normalize_label(label):
+    if isinstance(label, str):
+        label = label.strip().lower()
+    if label == '+' or label == 'cross':
+        return 'Cross'
+    elif label == 'x':
+        return 'X'
+    return None
+```
+
+**수정 후 (Circle 추가):**
+```python
+def normalize_label(label):
+    if isinstance(label, str):
+        label = label.strip().lower()
+    if label == '+' or label == 'cross':
+        return 'Cross'
+    elif label == 'x':
+        return 'X'
+    elif label == 'o' or label == 'circle':  # 새로운 라벨 추가
+        return 'Circle'  # 표준형으로 반환
+    return None
+```
+
+**규칙:**
+- 모든 입력 형태를 소문자로 변환
+- 가능한 모든 별칭(alias) 처리
+  - `'o'` → `'Circle'`
+  - `'circle'` → `'Circle'`
+  - `'O'` → `'Circle'`
+
+---
+
+### **단계 2: data.json에 필터와 패턴 추가**
+
+**필터 추가 (data.json의 "filters" 섹션):**
+```json
+{
+  "filters": {
+    "size_5": {
+      "cross": [[0, 1, 0], ...],
+      "x": [[1, 0, 1], ...],
+      "circle": [[0, 1, 1, 1, 0], ...]  // 새로운 필터
+    }
+  }
+}
+```
+
+**패턴 추가 (data.json의 "patterns" 섹션):**
+```json
+{
+  "patterns": {
+    "size_5_1": {
+      "input": [[0, 1, 1, 1, 0], ...],
+      "expected": "circle"  // 새로운 라벨
+    }
+  }
+}
+```
+
+**규칙:**
+- 필터 키는 소문자: `"circle"` (대문자 X)
+- expected 값도 소문자: `"circle"` (normalize_label에서 대문자로 변환)
+- 각 크기별로 필터가 있어야 함 (size_5, size_13, size_25)
+
+---
+
+### **단계 3: 프로그램 수정**
+
+**모드 2의 필터 로드 부분:**
+```python
+# 현재 코드:
+for label in ['Cross', 'X']:
+    if label in filter_dict:
+        score = mac_operation(input_pattern, filter_dict[label])
+        scores[label] = score
+
+# 수정 후:
+for label in ['Cross', 'X', 'Circle']:  # 새 라벨 추가
+    if label in filter_dict:
+        score = mac_operation(input_pattern, filter_dict[label])
+        scores[label] = score
+```
+
+---
+
+### **단계 4: 테스트 케이스 작성**
+
+**테스트 목록:**
+```
+테스트 케이스 1: Circle 필터에 Circle 패턴
+  - 예상: 높은 점수, 판정: Circle, PASS
+
+테스트 케이스 2: Cross 필터에 Circle 패턴
+  - 예상: 낮은 점수, 판정: Circle, PASS
+
+테스트 케이스 3: X 필터에 Circle 패턴
+  - 예상: 낮은 점수, 판정: Circle, PASS
+
+테스트 케이스 4: 동점 테스트
+  - Cross 점수: 1.5, Circle 점수: 1.5000000001
+  - 예상: UNDECIDED, expected: Circle, FAIL
+```
+
+**data.json에 추가:**
+```json
+"size_5_circle_1": {
+  "input": [[0, 1, 1, 1, 0], ...],
+  "expected": "o"
+},
+"size_5_circle_2": {
+  "input": [[1, 0, 0, 0, 1], ...],
+  "expected": "circle"
+}
+```
+
+---
+
+### **단계 5: 검증 및 실행**
+
+```bash
+python main.py
+# 선택: 2
+# 모든 패턴 분석 (새로운 Circle 테스트 포함)
+# 성능 분석 출력
+# 결과 요약 (새 케이스 포함)
+```
+
+---
+
+### **요약: 새 라벨 추가 체크리스트**
+
+```
+☐ 1. normalize_label() 함수에 새 라벨 처리 로직 추가
+☐ 2. data.json에 filters 추가 (모든 크기별)
+☐ 3. data.json에 patterns 추가 (테스트 케이스)
+☐ 4. 프로그램의 "라벨 목록" 부분 수정
+☐ 5. 테스트 실행 및 PASS/FAIL 확인
+☐ 6. README 문서 업데이트
+☐ 7. Git commit & push
+```
+
+---
+
+## 10단계: CPU(직렬) vs NPU(병렬) - 병목 지점 분석
+
+### **개념: 직렬 처리 vs 병렬 처리**
+
+#### **CPU 방식 (직렬 처리 - 한 명의 계산원)**
+```
+계산원이 한 명뿐입니다:
+
+시간: 0초 → 1초 → 2초 → 3초 → 4초
+작업: A    B    C    D    E
+
+한 번에 한 개씩만 처리!
+```
+
+#### **NPU 방식 (병렬 처리 - 여러 명의 계산원)**
+```
+계산원이 5명입니다:
+
+시간: 0초 → 1초
+작업: A B C D E (동시 처리!)
+
+모두 동시에 처리!
+```
+
+---
+
+### **우리 프로그램에서의 병목 지점**
+
+#### **병목 1: 중첩 반복문 (가장 중요!)**
+
+```python
+for i in range(n):      # 첫 번째 루프
+    for j in range(n):  # 두 번째 루프
+        score += pattern[i][j] * filter_matrix[i][j]  # 반복
+```
+
+**CPU로 실행 (직렬):**
+```
+시간: 0ms  0.001ms  0.002ms  ...  1ms
+작업: (1,1) (1,2)   (1,3)   ...  (25,25)
+
+n=25일 때: 625번을 순서대로 한 개씩
+실제 소요 시간: 약 1ms
+```
+
+**NPU로 실행 (병렬):**
+```
+만약 625개의 곱셈 연산기가 있다면:
+
+시간: 0ms  
+작업: 625개 모두 동시에 처리!
+실제 소요 시간: 약 0.001ms (거의 순간)
+
+빨라짐: 625배 ÷ 625개 = 1ms ÷ 625 ≈ 0.0016ms
+```
+
+---
+
+#### **병목 2: MAC 연산 반복**
+
+현재 프로그램:
+```python
+def measure_mac_time(...):
+    times = []
+    for _ in range(10):  # 10번 반복
+        start = time.time()
+        mac_operation(...)  # 625번 곱하기
+        end = time.time()
+```
+
+**병목:**
+```
+CPU: 625 × 10 = 6,250번 순서대로 처리
+NPU: 625개 동시 처리 × 10 반복 = 거의 같은 시간
+```
+
+**이득:**
+```
+CPU 시간: 10ms
+NPU 시간: 0.016ms
+속도 향상: 625배
+```
+
+---
+
+#### **병목 3: 여러 필터 처리**
+
+모드 2에서:
+```python
+for size_key in ['size_5', 'size_13', 'size_25']:
+    for pattern_key in patterns:
+        for label in ['Cross', 'X']:
+            mac_operation(pattern, filter)  # 반복!
+```
+
+**전체 연산 흐름:**
+```
+size_5 (25번) + size_13 (169번) + size_25 (625번)
+= 각각 2번 필터 처리 (Cross, X)
+= (25 + 169 + 625) × 2 = 1,638번 곱셈 연산
+
+CPU: 1,638번 순서대로 → 약 1.6ms
+NPU: 625개 동시 처리 × 3개 크기 → 약 0.0016ms
+```
+
+---
+
+### **구체적 병목 분석 테이블**
+
+| 연산 | 횟수 | CPU 시간 | NPU 시간 | 속도향상 |
+|------|------|---------|---------|---------|
+| 3×3 | 9 | 0.009ms | 0.000014ms | 643배 |
+| 5×5 | 25 | 0.025ms | 0.00004ms | 625배 |
+| 13×13 | 169 | 0.169ms | 0.00027ms | 626배 |
+| 25×25 | 625 | 0.625ms | 0.001ms | 625배 |
+| **전체** | **1,638** | **1.6ms** | **0.0026ms** | **615배** |
+
+---
+
+### **왜 모두 비슷한 속도향상(625배)인가?**
+
+```
+법칙: 속도향상 ≈ 최대 병렬 수
+
+가장 큰 연산이 25×25 = 625개 곱셈
+동시에 625개를 처리할 수 있으면
+속도향상 ≈ 625배
+```
+
+---
+
+### **실제 AI 모델에서는?**
+
+```
+ResNet-50 (유명한 이미지 인식 AI):
+- 필터 개수: 약 2,000개
+- 각 필터 크기: 평균 100×100
+- 한 이미지 처리: 약 50억 번의 곱셈
+
+CPU (직렬 처리):
+- 50억 번 × 1 나노초 ≈ 5초
+
+NPU (병렬 처리, 10,000개 연산기):
+- 50억 번 ÷ 10,000 ≈ 500,000나노초 ≈ 0.5ms
+
+속도향상: 5초 ÷ 0.5ms = 10,000배!
+```
+
+---
+
+### **병목 제거를 위한 최적화**
+
+#### **최적화 1: 1차원 배열 사용**
+
+```python
+# 현재 (2D):
+score += pattern[i][j] * filter[i][j]  # 2번 메모리 접근
+
+# 최적화 (1D):
+score += pattern[i*n+j] * filter[i*n+j]  # 메모리 연속 접근
+```
+
+**이득:** 메모리 캐시 효율 향상 → 약 2배 빨라짐
+
+---
+
+#### **최적화 2: 벡터화 라이브러리**
+
+```python
+# 현재 (반복문):
+for i in range(n):
+    for j in range(n):
+        score += pattern[i][j] * filter[i][j]
+
+# NumPy 사용 (내부에서 병렬 처리):
+import numpy as np
+score = np.sum(np.array(pattern) * np.array(filter))
+```
+
+**이득:** CPU의 SIMD(병렬 명령어) 활용 → 약 10-100배 빨라짐
+
+---
+
+#### **최적화 3: GPU/NPU 사용**
+
+```python
+# PyTorch (GPU 가능):
+import torch
+pattern_gpu = torch.tensor(pattern).cuda()
+filter_gpu = torch.tensor(filter).cuda()
+score = torch.sum(pattern_gpu * filter_gpu)
+```
+
+**이득:** 진정한 병렬 처리 → 1,000배 이상 빨라짐
+
+---
+
+### **요약: 병목 분석**
+
+| 단계 | 병목 | 원인 | 해결책 |
+|------|------|------|--------|
+| 1 | 중첩 반복문 | N²번 순서 처리 | 병렬 연산 |
+| 2 | 메모리 접근 | 2D 배열 비연속 | 1D 배열 사용 |
+| 3 | CPU 한계 | 직렬 처리만 가능 | GPU/NPU 사용 |
+| 4 | 여러 필터 | 필터별 순서 처리 | 필터 배치 병렬화 |
+
+---
+
+
 
 ### **현재 한계:**
 ```
