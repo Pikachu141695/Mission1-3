@@ -57,7 +57,6 @@ def load_json_data(filepath): # JSON 데이터 로드 함수, 모드 2 데이터
         return None # None 반환
 
 def mode1_user_input(): # 모드 1: 사용자 입력 처리 함수
-    print("\n=== Mini NPU Simulator ===\n") # 프로그램 타이틀 출력
     print("#---------------------------------------") # 구분선 출력
     print("# [1] 필터 입력") # 단계 표시
     print("#---------------------------------------") # 구분선 출력
@@ -95,8 +94,6 @@ def mode1_user_input(): # 모드 1: 사용자 입력 처리 함수
     print(f"판정: {result}") # 최종 판정 출력
 
 def mode2_json_analysis(): # 모드 2: JSON 데이터 분석 함수
-    print("\n=== Mini NPU Simulator ===\n") # 프로그램 타이틀 출력
-
     json_path = os.path.join(os.path.dirname(__file__), 'data.json') # JSON 파일 경로 설정, 스크립트 디렉토리 기준
     data = load_json_data(json_path) # JSON 데이터 로드
 
@@ -216,21 +213,26 @@ def mode2_json_analysis(): # 모드 2: JSON 데이터 분석 함수
                 print(f"- {result['key']}: {result['reason']}") # 케이스 및 사유 출력
 
 def main(): # 메인 함수, 프로그램 진입점
-    print("\n=== Mini NPU Simulator ===\n") # 프로그램 타이틀 출력
-    print("[모드 선택]\n") # 모드 선택 안내
-    print("1. 사용자 입력 (3x3)") # 모드 1 설명
-    print("2. data.json 분석") # 모드 2 설명
+    while True: # 메인 루프, 종료 선택까지 반복
+        print("\n=== Mini NPU Simulator ===\n") # 프로그램 타이틀 출력
+        print("[모드 선택]\n") # 모드 선택 안내
+        print("1. 사용자 입력 (3x3)") # 모드 1 설명
+        print("2. data.json 분석") # 모드 2 설명
+        print("0. 종료") # 종료 옵션
 
-    while True: # 모드 선택 루프, 유효한 입력까지 반복
-        choice = input("\n선택: ").strip().lstrip('﻿') # 사용자 선택 입력받음, BOM 제거
-        if choice == '1': # 모드 1 선택 확인
-            mode1_user_input() # 모드 1 실행
-            break # 루프 종료
-        elif choice == '2': # 모드 2 선택 확인
-            mode2_json_analysis() # 모드 2 실행
-            break # 루프 종료
-        else: # 유효하지 않은 선택
-            print("1 또는 2를 입력하세요.") # 오류 메시지
+        while True: # 선택 입력 루프, 유효한 입력까지 반복
+            choice = input("\n선택: ").strip().lstrip('﻿') # 사용자 선택 입력받음, BOM 제거
+            if choice == '1': # 모드 1 선택 확인
+                mode1_user_input() # 모드 1 실행
+                break # 선택 루프 종료 → 메뉴로 복귀
+            elif choice == '2': # 모드 2 선택 확인
+                mode2_json_analysis() # 모드 2 실행
+                break # 선택 루프 종료 → 메뉴로 복귀
+            elif choice == '0': # 종료 선택 확인
+                print("\n프로그램을 종료합니다.") # 종료 메시지
+                return # 프로그램 종료
+            else: # 유효하지 않은 선택
+                print("0, 1, 2 중 하나를 입력하세요.") # 오류 메시지
 
 if __name__ == '__main__': # 스크립트 직접 실행 확인, 모듈 import 시 실행 방지
     main() # 메인 함수 호출, 프로그램 시작
